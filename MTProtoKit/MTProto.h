@@ -12,15 +12,23 @@
 @class MTQueue;
 @class MTContext;
 @class MTNetworkUsageCalculationInfo;
+@class MTApiEnvironment;
 
 @class MTProto;
+
+@interface MTProtoConnectionState : NSObject
+
+@property (nonatomic, readonly) bool isConnected;
+@property (nonatomic, readonly) bool isUsingProxy;
+
+@end
 
 @protocol MTProtoDelegate <NSObject>
 
 @optional
 
 - (void)mtProtoNetworkAvailabilityChanged:(MTProto *)mtProto isNetworkAvailable:(bool)isNetworkAvailable;
-- (void)mtProtoConnectionStateChanged:(MTProto *)mtProto isConnected:(bool)isConnected;
+- (void)mtProtoConnectionStateChanged:(MTProto *)mtProto state:(MTProtoConnectionState *)state;
 - (void)mtProtoConnectionContextUpdateStateChanged:(MTProto *)mtProto isUpdatingConnectionContext:(bool)isUpdatingConnectionContext;
 - (void)mtProtoServiceTasksStateChanged:(MTProto *)mtProto isPerformingServiceTasks:(bool)isPerformingServiceTasks;
 
@@ -30,12 +38,14 @@
 
 @property (nonatomic, weak) id<MTProtoDelegate> delegate;
 
-@property (nonatomic, strong) MTContext *context;
+@property (nonatomic, strong, readonly) MTContext *context;
+@property (nonatomic, strong, readonly) MTApiEnvironment *apiEnvironment;
 @property (nonatomic) NSInteger datacenterId;
 
 @property (nonatomic) bool shouldStayConnected;
 @property (nonatomic) bool useUnauthorizedMode;
 @property (nonatomic) bool media;
+@property (nonatomic) bool cdn;
 @property (nonatomic) id requiredAuthToken;
 @property (nonatomic) NSInteger authTokenMasterDatacenterId;
 

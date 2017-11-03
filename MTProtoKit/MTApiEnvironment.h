@@ -8,14 +8,28 @@
 
 #import <Foundation/Foundation.h>
 
+@interface MTSocksProxySettings : NSObject
+
+@property (nonatomic, strong, readonly) NSString *ip;
+@property (nonatomic, readonly) uint16_t port;
+@property (nonatomic, strong, readonly) NSString *username;
+@property (nonatomic, strong, readonly) NSString *password;
+
+- (instancetype)initWithIp:(NSString *)ip port:(uint16_t)port username:(NSString *)username password:(NSString *)password;
+
+@end
+
 @interface MTApiEnvironment : NSObject
 
 @property (nonatomic) int32_t apiId;
 @property (nonatomic, strong, readonly) NSString *deviceModel;
 @property (nonatomic, strong, readonly) NSString *systemVersion;
 @property (nonatomic, strong) NSString *appVersion;
-@property (nonatomic, strong, readonly) NSString *langCode;
+@property (nonatomic, strong, readonly) NSString *systemLangCode;
 @property (nonatomic, strong) NSNumber *layer;
+    
+@property (nonatomic, strong) NSString *langPack;
+@property (nonatomic, strong, readonly) NSString *langPackCode;
 
 @property (nonatomic, strong, readonly) NSString *apiInitializationHash;
 
@@ -23,6 +37,11 @@
 @property (nonatomic) NSData *tcpPayloadPrefix;
 @property (nonatomic) NSDictionary *datacenterAddressOverrides;
 
+@property (nonatomic, strong, readonly) MTSocksProxySettings *socksProxySettings;
+
 @property (nonatomic, copy) void (^passwordInputHandler)();
+
+- (MTApiEnvironment *)withUpdatedLangPackCode:(NSString *)langPackCode;
+- (MTApiEnvironment *)withUpdatedSocksProxySettings:(MTSocksProxySettings *)socksProxySettings;
 
 @end

@@ -107,7 +107,9 @@
             [delegate transportTransactionsMayHaveFailed:self transactionIds:activeTransactionId];
     }];
     
-    [self cleanup];
+    [[MTHttpTransport httpTransportQueue] dispatchOnQueue:^{
+        [self cleanup];
+    }];
     
     [super stop];
 }
@@ -134,7 +136,9 @@
         for (MTHttpWorker *worker in workers)
         {
             worker.delegate = nil;
-            [worker stop];
+            [[MTHttpWorker httpWorkerProcessingQueue] dispatchOnQueue:^{
+                [worker stop];
+            }];
         }
     }];
 }
@@ -146,8 +150,8 @@
         id<MTTransportDelegate> delegate = self.delegate;
         if ([delegate respondsToSelector:@selector(transportNetworkAvailabilityChanged:isNetworkAvailable:)])
             [delegate transportNetworkAvailabilityChanged:self isNetworkAvailable:_isNetworkAvailable];
-        if ([delegate respondsToSelector:@selector(transportConnectionStateChanged:isConnected:)])
-            [delegate transportConnectionStateChanged:self isConnected:_isConnected];
+        if ([delegate respondsToSelector:@selector(transportConnectionStateChanged:isConnected:isUsingProxy:)])
+            [delegate transportConnectionStateChanged:self isConnected:_isConnected isUsingProxy:false];
         if ([delegate respondsToSelector:@selector(transportConnectionContextUpdateStateChanged:isUpdatingConnectionContext:)])
             [delegate transportConnectionContextUpdateStateChanged:self isUpdatingConnectionContext:_currentActualizationPingId != 0];
     }];
@@ -195,8 +199,8 @@
             _isConnected = false;
          
             id<MTTransportDelegate> delegate = self.delegate;
-            if ([delegate respondsToSelector:@selector(transportConnectionStateChanged:isConnected:)])
-                [delegate transportConnectionStateChanged:self isConnected:_isConnected];
+            if ([delegate respondsToSelector:@selector(transportConnectionStateChanged:isConnected:isUsingProxy:)])
+                [delegate transportConnectionStateChanged:self isConnected:_isConnected isUsingProxy:false];
         }
     }];
 }
@@ -277,8 +281,8 @@
             _isConnected = true;
             
             id<MTTransportDelegate> delegate = self.delegate;
-            if ([delegate respondsToSelector:@selector(transportConnectionStateChanged:isConnected:)])
-                [delegate transportConnectionStateChanged:self isConnected:_isConnected];
+            if ([delegate respondsToSelector:@selector(transportConnectionStateChanged:isConnected:isUsingProxy:)])
+                [delegate transportConnectionStateChanged:self isConnected:_isConnected isUsingProxy:false];
         }
         
         [self stopConnectionWatchdogTimer];

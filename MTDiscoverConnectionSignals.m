@@ -182,14 +182,15 @@ typedef struct {
     }];
 }
 
-+ (MTSignal *)discoverSchemeWithContext:(MTContext *)context addressList:(NSArray *)addressList media:(bool)media
++ (MTSignal *)discoverSchemeWithContext:(MTContext *)context addressList:(NSArray *)addressList media:(bool)media isProxy:(bool)isProxy
 {
     NSMutableArray *bestAddressList = [[NSMutableArray alloc] init];
     
     for (MTDatacenterAddress *address in addressList)
     {
-        if (media == address.preferForMedia)
+        if (media == address.preferForMedia && isProxy == address.preferForProxy) {
             [bestAddressList addObject:address];
+        }
     }
     
     if (bestAddressList.count == 0 && media)
@@ -199,8 +200,18 @@ typedef struct {
     NSMutableArray *bestTcp6Signals = [[NSMutableArray alloc] init];
     NSMutableArray *bestHttpSignals = [[NSMutableArray alloc] init];
     
-    for (MTDatacenterAddress *address in bestAddressList)
-    {
+    NSMutableDictionary *tcpIpsByPort = [[NSMutableDictionary alloc] init];
+    
+    for (MTDatacenterAddress *address in bestAddressList) {
+        NSMutableSet *ips = tcpIpsByPort[@(address.port)];
+        if (ips == nil) {
+            ips = [[NSMutableSet alloc] init];
+            tcpIpsByPort[@(address.port)] = ips;
+        }
+        [ips addObject:address.ip];
+    }
+    
+    for (MTDatacenterAddress *address in bestAddressList) {
         MTTransportScheme *tcpTransportScheme = [[MTTransportScheme alloc] initWithTransportClass:[MTTcpTransport class] address:address media:media];
         MTTransportScheme *httpTransportScheme = [[MTTransportScheme alloc] initWithTransportClass:[MTHttpTransport class] address:address media:media];
         
@@ -220,14 +231,38 @@ typedef struct {
                 return [MTSignal complete];
             }];
             [bestTcp4Signals addObject:signal];
+            
+            NSArray *alternatePorts = @[@80, @5222];
+            for (NSNumber *nPort in alternatePorts) {
+                NSSet *ipsWithPort = tcpIpsByPort[nPort];
+                if (![ipsWithPort containsObject:address.ip]) {
+                    MTDatacenterAddress *portAddress = [[MTDatacenterAddress alloc] initWithIp:address.ip port:[nPort intValue] preferForMedia:address.preferForMedia restrictToTcp:address.restrictToTcp cdn:address.cdn preferForProxy:address.preferForProxy];
+                    MTTransportScheme *tcpPortTransportScheme = [[MTTransportScheme alloc] initWithTransportClass:[MTTcpTransport class] address:portAddress media:media];
+                    MTSignal *tcpConnectionWithTimeout = [[[self tcpConnectionWithContext:context datacenterId:0 address:portAddress] then:[MTSignal single:tcpPortTransportScheme]] timeout:5.0 onQueue:[MTQueue concurrentDefaultQueue] orSignal:[MTSignal fail:nil]];
+                    MTSignal *signal = [tcpConnectionWithTimeout catch:^MTSignal *(__unused id error) {
+                        return [MTSignal complete];
+                    }];
+                    [bestTcp4Signals addObject:signal];
+                }
+            }
         }
         
-        if (!address.restrictToTcp) {
+        if (!address.restrictToTcp && !isProxy) {
             MTSignal *signal = [[[[self httpConnectionWithAddress:address] then:[MTSignal single:httpTransportScheme]] timeout:5.0 onQueue:[MTQueue concurrentDefaultQueue] orSignal:[MTSignal fail:nil]] catch:^MTSignal *(__unused id error)
             {
                 return [MTSignal complete];
             }];
             [bestHttpSignals addObject:signal];
+            
+            if (address.port != 80) {
+                MTDatacenterAddress *httpAddress = [[MTDatacenterAddress alloc] initWithIp:address.ip port:80 preferForMedia:address.preferForMedia restrictToTcp:false cdn:address.cdn preferForProxy:address.preferForProxy];
+                
+                MTTransportScheme *alternateHttpTransportScheme = [[MTTransportScheme alloc] initWithTransportClass:[MTHttpTransport class] address:httpAddress media:media];
+                
+                [bestHttpSignals addObject:[[[[self httpConnectionWithAddress:httpAddress] then:[MTSignal single:alternateHttpTransportScheme]] timeout:5.0 onQueue:[MTQueue concurrentDefaultQueue] orSignal:[MTSignal fail:nil]] catch:^MTSignal *(__unused id error) {
+                    return [MTSignal complete];
+                }]];
+            }
         }
     }
     

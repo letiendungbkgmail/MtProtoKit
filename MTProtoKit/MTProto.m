@@ -53,6 +53,8 @@
 #import "MTNewSessionCreatedMessage.h"
 #import "MTPongMessage.h"
 
+#import "MTApiEnvironment.h"
+
 #import "MTTime.h"
 
 #define MTProtoV2 1
@@ -70,6 +72,19 @@ typedef enum {
 static const NSUInteger MTMaxContainerSize = 3 * 1024;
 static const NSUInteger MTMaxUnacknowledgedMessageSize = 1 * 1024 * 1024;
 static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
+
+@implementation MTProtoConnectionState
+
+- (instancetype)initWithIsConnected:(bool)isConnected isUsingProxy:(bool)isUsingProxy {
+    self = [super init];
+    if (self != nil) {
+        _isConnected = isConnected;
+        _isUsingProxy = isUsingProxy;
+    }
+    return self;
+}
+
+@end
 
 @interface MTProto () <MTContextChangeListener, MTTransportDelegate, MTTimeSyncMessageServiceDelegate, MTResendMessageServiceDelegate>
 {
@@ -118,6 +133,7 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
         _context = context;
         _datacenterId = datacenterId;
         _usageCalculationInfo = usageCalculationInfo;
+        _apiEnvironment = context.apiEnvironment;
         
         [_context addChangeListener:self];
         
@@ -216,7 +232,7 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
             if ([delegate respondsToSelector:@selector(mtProtoNetworkAvailabilityChanged:isNetworkAvailable:)])
                 [delegate mtProtoNetworkAvailabilityChanged:self isNetworkAvailable:false];
             if ([delegate respondsToSelector:@selector(mtProtoConnectionStateChanged:isConnected:)])
-                [delegate mtProtoConnectionStateChanged:self isConnected:false];
+                [delegate mtProtoConnectionStateChanged:self state:nil];
             if ([delegate respondsToSelector:@selector(mtProtoConnectionContextUpdateStateChanged:isUpdatingConnectionContext:)])
                 [delegate mtProtoConnectionContextUpdateStateChanged:self isUpdatingConnectionContext:false];
         }
@@ -268,7 +284,7 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
             [self setTransport:nil];
         }
         
-        _transportScheme = [_context transportSchemeForDatacenterWithid:_datacenterId media:_media];
+        _transportScheme = [_context transportSchemeForDatacenterWithId:_datacenterId media:_media isProxy:_apiEnvironment.socksProxySettings != nil];
         
         if (_transportScheme == nil)
         {
@@ -285,7 +301,7 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
             {
                 [self setMtState:_mtState | MTProtoStateAwaitingDatacenterAuthorization];
                 
-                [_context authInfoForDatacenterWithIdRequired:_datacenterId];
+                [_context authInfoForDatacenterWithIdRequired:_datacenterId isCdn:_cdn];
             }
         }
         else if (_requiredAuthToken != nil && !_useUnauthorizedMode && ![_requiredAuthToken isEqual:[_context authTokenForDatacenterWithId:_datacenterId]])
@@ -659,7 +675,7 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
     }];
 }
 
-- (void)transportConnectionStateChanged:(MTTransport *)transport isConnected:(bool)isConnected
+- (void)transportConnectionStateChanged:(MTTransport *)transport isConnected:(bool)isConnected isUsingProxy:(bool)isUsingProxy
 {
     [[MTProto managerQueue] dispatchOnQueue:^
     {
@@ -677,8 +693,8 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
         }
         
         id<MTProtoDelegate> delegate = _delegate;
-        if ([delegate respondsToSelector:@selector(mtProtoConnectionStateChanged:isConnected:)])
-            [delegate mtProtoConnectionStateChanged:self isConnected:isConnected];
+        if ([delegate respondsToSelector:@selector(mtProtoConnectionStateChanged:state:)])
+            [delegate mtProtoConnectionStateChanged:self state:[[MTProtoConnectionState alloc] initWithIsConnected:isConnected isUsingProxy:isUsingProxy]];
     }];
 }
 
@@ -1214,7 +1230,7 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
                                 [strongSelf requestTransportTransaction];
                             }
                         }];
-                    }]]);
+                    } needsQuickAck:false expectsDataInResponse:true]]);
                 }
                 else
                     transactionReady(nil);
@@ -1676,6 +1692,13 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
                     [messageService mtProto:self protocolErrorReceived:protocolErrorCode];
             }
             
+            if (protocolErrorCode == -404 && _cdn) {
+                _authInfo = nil;
+                [_context updateAuthInfoForDatacenterWithId:_datacenterId authInfo:nil];
+                [_context authInfoForDatacenterWithIdRequired:_datacenterId isCdn:true];
+                _mtState |= MTProtoStateAwaitingDatacenterAuthorization;
+            }
+            
             if (currentTransport == _transport)
                 [self requestSecureTransportReset];
             
@@ -1765,8 +1788,12 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
     int32_t messageDataLength = 0;
     [decryptedData getBytes:&messageDataLength range:NSMakeRange(28, 4)];
     
-    if (messageDataLength < 0 || messageDataLength > (int32_t)decryptedData.length)
+    if (messageDataLength < 0 || messageDataLength > (int32_t)decryptedData.length) {
+#if MTProtoV2
+        __unused NSData *result = MTSha256(decryptedData);
+#endif
         return nil;
+    }
     
 #if MTProtoV2
     int xValue = 8;
@@ -2259,6 +2286,37 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
                 [service mtProto:self messageResendRequestFailed:messageId];
             }
         }
+    }];
+}
+    
+- (void)contextDatacenterPublicKeysUpdated:(MTContext *)context datacenterId:(NSInteger)datacenterId publicKeys:(NSArray<NSDictionary *> *)publicKeys {
+    [[MTProto managerQueue] dispatchOnQueue:^{
+        for (id<MTMessageService> service in _messageServices) {
+            if ([service respondsToSelector:@selector(mtProtoPublicKeysUpdated:datacenterId:publicKeys:)]) {
+                [service mtProtoPublicKeysUpdated:self datacenterId:datacenterId publicKeys:publicKeys];
+            }
+        }
+    }];
+}
+    
+- (void)contextApiEnvironmentUpdated:(MTContext *)context apiEnvironment:(MTApiEnvironment *)apiEnvironment {
+    [[MTProto managerQueue] dispatchOnQueue:^{
+        MTSocksProxySettings *previousSocksProxySettings = _apiEnvironment.socksProxySettings;
+        
+        _apiEnvironment = apiEnvironment;
+        
+        if ((_apiEnvironment.socksProxySettings != nil) != (previousSocksProxySettings != nil) || (previousSocksProxySettings != nil && ![_apiEnvironment.socksProxySettings isEqual:previousSocksProxySettings])) {
+            [self resetTransport];
+            [self requestTransportTransaction];
+        }
+        
+        for (id<MTMessageService> service in _messageServices) {
+            if ([service respondsToSelector:@selector(mtProtoApiEnvironmentUpdated:apiEnvironment:)]) {
+                [service mtProtoApiEnvironmentUpdated:self apiEnvironment:apiEnvironment];
+            }
+        }
+        
+        //[self resetTransport];
     }];
 }
 

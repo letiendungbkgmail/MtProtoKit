@@ -11,6 +11,7 @@
 @class MTProto;
 @class MTIncomingMessage;
 @class MTMessageTransaction;
+@class MTApiEnvironment;
 
 @protocol MTMessageService <NSObject>
 
@@ -19,6 +20,7 @@
 - (void)mtProtoWillAddService:(MTProto *)mtProto;
 - (void)mtProtoDidAddService:(MTProto *)mtProto;
 - (void)mtProtoDidRemoveService:(MTProto *)mtProto;
+- (void)mtProtoPublicKeysUpdated:(MTProto *)mtProto datacenterId:(NSInteger)datacenterId publicKeys:(NSArray<NSDictionary *> *)publicKeys;
 - (MTMessageTransaction *)mtProtoMessageTransaction:(MTProto *)mtProto;
 - (void)mtProtoDidChangeSession:(MTProto *)mtProto;
 - (void)mtProtoServerDidChangeSession:(MTProto *)mtProto firstValidMessageId:(int64_t)firstValidMessageId otherValidMessageIds:(NSArray *)otherValidMessageIds;
@@ -39,5 +41,7 @@
 - (void)mtProtoServiceTasksStateChanged:(MTProto *)mtProto isPerformingServiceTasks:(bool)isPerformingServiceTasks;
 
 - (void)mtProtoAuthTokenUpdated:(MTProto *)mtProto;
+    
+- (void)mtProtoApiEnvironmentUpdated:(MTProto *)mtProto apiEnvironment:(MTApiEnvironment *)apiEnvironment;
 
 @end

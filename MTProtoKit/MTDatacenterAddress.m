@@ -13,7 +13,7 @@
 
 @implementation MTDatacenterAddress
 
-- (instancetype)initWithIp:(NSString *)ip port:(uint16_t)port preferForMedia:(bool)preferForMedia restrictToTcp:(bool)restrictToTcp
+- (instancetype)initWithIp:(NSString *)ip port:(uint16_t)port preferForMedia:(bool)preferForMedia restrictToTcp:(bool)restrictToTcp cdn:(bool)cdn preferForProxy:(bool)preferForProxy
 {
     self = [super init];
     if (self != nil)
@@ -22,6 +22,8 @@
         _port = port;
         _preferForMedia = preferForMedia;
         _restrictToTcp = restrictToTcp;
+        _cdn = cdn;
+        _preferForProxy = preferForProxy;
     }
     return self;
 }
@@ -36,6 +38,8 @@
         _port = (uint16_t)[aDecoder decodeIntForKey:@"port"];
         _preferForMedia = [aDecoder decodeBoolForKey:@"preferForMedia"];
         _restrictToTcp = [aDecoder decodeBoolForKey:@"restrictToTcp"];
+        _cdn = [aDecoder decodeBoolForKey:@"cdn"];
+        _preferForProxy = [aDecoder decodeBoolForKey:@"preferForProxy"];
     }
     return self;
 }
@@ -47,6 +51,8 @@
     [aCoder encodeInt:_port forKey:@"port"];
     [aCoder encodeBool:_preferForMedia forKey:@"preferForMedia"];
     [aCoder encodeBool:_restrictToTcp forKey:@"restrictToTcp"];
+    [aCoder encodeBool:_cdn forKey:@"cdn"];
+    [aCoder encodeBool:_preferForProxy forKey:@"preferForProxy"];
 }
 
 - (BOOL)isEqual:(id)object
@@ -75,6 +81,14 @@
         return false;
     }
     
+    if (_cdn != other.cdn) {
+        return false;
+    }
+    
+    if (_preferForProxy != other.preferForProxy) {
+        return false;
+    }
+    
     return true;
 }
 
@@ -91,7 +105,7 @@
 
 - (NSString *)description
 {
-    return [[NSString alloc] initWithFormat:@"%@:%d (media: %@)", _ip == nil ? _host : _ip, (int)_port, _preferForMedia ? @"yes" : @"no"];
+    return [[NSString alloc] initWithFormat:@"%@:%d (media: %@, cdn: %@, static: %@)", _ip == nil ? _host : _ip, (int)_port, _preferForMedia ? @"yes" : @"no", _cdn ? @"yes" : @"no", _preferForProxy ? @"yes" : @"no"];
 }
 
 @end

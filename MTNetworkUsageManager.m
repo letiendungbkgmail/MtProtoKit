@@ -41,16 +41,18 @@
         _queue = [[MTQueue alloc] init];
         _info = info;
         
-        NSString *path = info.filePath;
-        int32_t fd = open([path UTF8String], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-        if (fd >= 0) {
-            _fd = fd;
-            ftruncate(fd, 4096);
-            void *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-            if (map != MAP_FAILED) {
-                _map = map;
+        [_queue dispatchOnQueue:^{
+            NSString *path = info.filePath;
+            int32_t fd = open([path UTF8String], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+            if (fd >= 0) {
+                _fd = fd;
+                ftruncate(fd, 4096);
+                void *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+                if (map != MAP_FAILED) {
+                    _map = map;
+                }
             }
-        }
+        }];
     }
     return self;
 }
@@ -103,13 +105,17 @@ static int offsetForInterface(MTNetworkUsageCalculationInfo *info, MTNetworkUsag
     }];
 }
 
-- (void)resetKeys:(NSArray<NSNumber *> *)keys completion:(void (^)())completion {
+- (void)resetKeys:(NSArray<NSNumber *> *)keys setKeys:(NSDictionary<NSNumber *, NSNumber *> *)setKeys completion:(void (^)())completion {
     [_queue dispatchOnQueue:^{
         if (_map) {
             for (NSNumber *key in keys) {
                 int64_t *ptr = (int64_t *)(_map + [key intValue] * 8);
                 *ptr = 0;
             }
+            [setKeys enumerateKeysAndObjectsUsingBlock:^(NSNumber *key, NSNumber *value, __unused BOOL *stop) {
+                int64_t *ptr = (int64_t *)(_map + [key intValue] * 8);
+                *ptr = [value longLongValue];
+            }];
             if (completion) {
                 completion();
             }

@@ -105,7 +105,7 @@
             MTRequest *request = [[MTRequest alloc] init];
             
             NSData *getConfigData = nil;
-            MTRequestDatacenterAddressListParser responseParser = [_context.serialization requestDatacenterAddressList:(int32_t)_datacenterId data:&getConfigData];
+            MTRequestDatacenterAddressListParser responseParser = [_context.serialization requestDatacenterAddressWithData:&getConfigData];
             
             [request setPayload:getConfigData metadata:@"getConfig" responseParser:responseParser];
             
@@ -113,17 +113,18 @@
             [request setCompleted:^(MTDatacenterAddressListData *result, __unused NSTimeInterval completionTimestamp, id error)
             {
                 __strong MTDiscoverDatacenterAddressAction *strongSelf = weakSelf;
-                
-                if (error == nil)
-                    [strongSelf getConfigSuccess:result.addressList];
-                else
-                    [strongSelf getConfigFailed];
+                if (strongSelf != nil) {
+                    if (error == nil)
+                        [strongSelf getConfigSuccess:result.addressList[@(strongSelf->_datacenterId)]];
+                    else
+                        [strongSelf getConfigFailed];
+                }
             }];
             
             [_requestService addRequest:request];
         }
         else
-            [context authInfoForDatacenterWithIdRequired:_targetDatacenterId];
+            [context authInfoForDatacenterWithIdRequired:_targetDatacenterId isCdn:false];
     }
 }
 
@@ -145,7 +146,7 @@
     if (addressList.count != 0)
     {
         MTContext *context = _context;
-        [context updateAddressSetForDatacenterWithId:_datacenterId addressSet:[[MTDatacenterAddressSet alloc] initWithAddressList:addressList]];
+        [context updateAddressSetForDatacenterWithId:_datacenterId addressSet:[[MTDatacenterAddressSet alloc] initWithAddressList:addressList] forceUpdateSchemes:false];
         [self complete];
     }
     else

@@ -200,16 +200,16 @@ static void ctr128_inc_aligned(unsigned char *counter)
 @interface MTAesCtr () {
     CCCryptorRef _cryptor;
     
-    unsigned char _ivec[16];
+    unsigned char _ivec[16] __attribute__((aligned(16)));
     unsigned int _num;
-    unsigned char _ecount[16];
+    unsigned char _ecount[16] __attribute__((aligned(16)));
 }
 
 @end
 
 @implementation MTAesCtr
 
-- (instancetype)initWithKey:(const void *)key keyLength:(int)keyLength iv:(const void *)iv {
+- (instancetype)initWithKey:(const void *)key keyLength:(int)keyLength iv:(const void *)iv decrypt:(bool)decrypt {
     self = [super init];
     if (self != nil) {
         _num = 0;
